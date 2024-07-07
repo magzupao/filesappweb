@@ -1,0 +1,121 @@
+Instalacion de kubernetes
+
+1. comprobamos
+free -h
+
+cat /etc/fstab | grep swap
+
+
+2. descargamos los binarios
+curl -LO "https://dl.k8s.io/release/v1.21.0/bin/linux/amd64/kubectl"
+
+curl -LO "https://dl.k8s.io/release/v1.21.0/bin/linux/amd64/kubeadm"
+
+curl -LO "https://dl.k8s.io/release/v1.21.0/bin/linux/amd64/kubelet"
+
+chmod +x kubectl kubeadm kubelet
+
+sudo mv kubectl kubeadm kubelet /usr/local/bin/
+
+#verificamos la instalacion:
+kubectl version --client
+kubeadm version
+kubelet --version
+
+3. habilitamos los puertos en ufw
+sudo ufw allow 6443/tcp
+sudo ufw allow 2379:2380/tcp
+sudo ufw allow 10250/tcp
+sudo ufw allow 10251/tcp
+sudo ufw allow 10252/tcp
+sudo ufw allow 10248/tcp
+sudo ufw allow ssh
+
+
+sudo ufw enable
+sudo ufw reload
+
+sudo ufw status
+
+4. sudo nano /var/lib/kubelet/config.yaml
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+authentication:
+  anonymous:
+    enabled: false
+  webhook:
+    enabled: true
+  x509:
+    clientCAFile: /etc/kubernetes/pki/ca.crt
+authorization:
+  mode: Webhook
+cgroupDriver: systemd
+clusterDNS:
+- 10.96.0.10
+clusterDomain: cluster.local
+runtimeRequestTimeout: "15m"
+
+
+5. sudo nano /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+[Service]
+Environment="KUBELET_CONFIG_ARGS=--config=/var/lib/kubelet/config.yaml"
+Environment="KUBELET_KUBECONFIG_ARGS=--kubeconfig=/etc/kubernetes/kubelet.conf"
+Environment="KUBELET_KUBEADM_ARGS=--container-runtime=docker --network-plugin=cni --pod-infra-container-image=k8s.gcr.io/pause:3.2"
+Environment="KUBELET_CGROUP_ARGS=--cgroup-driver=systemd"
+ExecStart=
+ExecStart=/usr/local/bin/kubelet $KUBELET_CONFIG_ARGS $KUBELET_KUBECONFIG_ARGS $KUBELET_KUBEADM_ARGS $KUBELET_CGROUP_ARGS
+
+6. ejecutamos
+sudo systemctl daemon-reload
+sudo systemctl restart kubelet
+sudo systemctl status kubelet
+
+7. si hay error:
+sudo kubeadm reset -f
+sudo rm -rf /etc/kubernetes/manifests/
+sudo rm -rf /etc/kubernetes/pki/
+sudo rm -rf /var/lib/etcd
+
+sudo kubeadm init --pod-network-cidr=192.168.0.0/16 --v=5
+...
+[kubelet-finalize] Updating "/etc/kubernetes/kubelet.conf" to point to a rotatable kubelet client certificate and key
+I0707 12:08:57.075988  733033 kubeletfinalize.go:132] [kubelet-finalize] Restarting the kubelet to enable client certificate rotation
+[addons] Applied essential addon: CoreDNS
+[addons] Applied essential addon: kube-proxy
+
+Your Kubernetes control-plane has initialized successfully!
+
+To start using your cluster, you need to run the following as a regular user:
+
+  mkdir -p $HOME/.kube
+  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+Alternatively, if you are the root user, you can run:
+
+  export KUBECONFIG=/etc/kubernetes/admin.conf
+
+You should now deploy a pod network to the cluster.
+Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
+  https://kubernetes.io/docs/concepts/cluster-administration/addons/
+
+Then you can join any number of worker nodes by running the following on each as root:
+
+kubeadm join 207.244.252.12:6443 --token x9ud32.zdwcthfinqadmm9r \
+        --discovery-token-ca-cert-hash sha256:b7c9e1ed38c7da007a97ecf6c2df32c4858c841764b1e06508e01d82ac40f0f2 
+		
+8. cambiamos a su - dev
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+9. instalamos calico
+kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
+
+kubectl get nodes
+
+10.desde el VPS worker ejecutamos:
+kubeadm join 207.244.252.12:6443 --token x9ud32.zdwcthfinqadmm9r \
+        --discovery-token-ca-cert-hash sha256:b7c9e1ed38c7da007a97ecf6c2df32c4858c841764b1e06508e01d82ac40f0f2
+		
+
